@@ -2,11 +2,11 @@ name: Build Docusaurus (Yarn) → Publish to web-Doc
 
 on:
   push:
-    branches: [ master ]          # 换成你的默认分支
+    branches: [ master ]          # 若默认分支不是 main，请改成你的分支名
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: read                # 读取代码即可；推送由凭据控制
 
 concurrency:
   group: "publish-webdoc"
@@ -15,6 +15,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # 将 secrets 先映射到 env，便于在 if: 表达式里安全使用
+    env:
+      DEPLOY_KEY_WEBDOC: ${{ secrets.DEPLOY_KEY_WEBDOC }}        # 可为空；若组织禁用 Deploy Keys，这个就留空
+      PUBLISH_TOKEN_WEBDOC: ${{ secrets.PUBLISH_TOKEN_WEBDOC }}  # Fine-grained PAT（仅对 VoidWorks-online/web-Doc 授权）
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -23,9 +29,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: yarn            # 缓存 Yarn（v1 有效；Berry 另加下一步）
+          cache: yarn
 
-      # 如果是 Yarn Berry（仓库里有 .yarnrc.yml），缓存 .yarn/cache
+      # Yarn Berry 缓存（仓库存在 .yarnrc.yml 时启用）
       - name: Cache Yarn Berry artifacts
         if: hashFiles('.yarnrc.yml') != ''
         uses: actions/cache@v4
@@ -40,11 +46,10 @@ jobs:
           restore-keys: |
             yarn-berry-
 
-      - name: Enable Corepack (Yarn >=2)
+      - name: Enable Corepack (Yarn >= 2)
         run: corepack enable
 
       - name: Yarn install
-        # Berry 用 --immutable；v1 用 --frozen-lockfile；二选一自动适配
         run: |
           if [ -f .yarnrc.yml ]; then
             yarn --version
@@ -55,27 +60,28 @@ jobs:
           fi
 
       - name: Build Docusaurus
-        run: yarn build           # 产物在 ./build
+        # 如果站点在子目录（如 website/），加 working-directory，并把下方 publish_dir 改成 website/build
+        run: yarn build
 
-      # —— 发布到另一个仓库的 gh-pages 分支 ——
-      # 方案 1：SSH Deploy Key（推荐，权限最小）
+      # —— 发布到另一个仓库（VoidWorks-online/web-Doc）的 gh-pages 分支 ——
+      # 路线 A：Deploy Key（若组织允许）
       - name: Publish to VoidWorks-online/web-Doc via Deploy Key
-        if: ${{ secrets.DEPLOY_KEY_WEBDOC != '' }}
+        if: ${{ env.DEPLOY_KEY_WEBDOC != '' }}
         uses: peaceiris/actions-gh-pages@v3
         with:
-          deploy_key: ${{ secrets.DEPLOY_KEY_WEBDOC }}
+          deploy_key: ${{ env.DEPLOY_KEY_WEBDOC }}
           external_repository: VoidWorks-online/web-Doc
           publish_branch: gh-pages
           publish_dir: ./build
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
 
-      # 方案 2：Fine-grained PAT（更容易配，权限更大）
+      # 路线 B：Fine-grained PAT（推荐在组织禁用 Deploy Keys 时使用）
       - name: Publish to VoidWorks-online/web-Doc via PAT
-        if: ${{ secrets.DEPLOY_KEY_WEBDOC == '' && secrets.PUBLISH_TOKEN_WEBDOC != '' }}
+        if: ${{ env.DEPLOY_KEY_WEBDOC == '' && env.PUBLISH_TOKEN_WEBDOC != '' }}
         uses: peaceiris/actions-gh-pages@v3
         with:
-          personal_token: ${{ secrets.PUBLISH_TOKEN_WEBDOC }}
+          personal_token: ${{ env.PUBLISH_TOKEN_WEBDOC }}
           external_repository: VoidWorks-online/web-Doc
           publish_branch: gh-pages
           publish_dir: ./build
