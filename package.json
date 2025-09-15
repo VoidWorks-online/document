@@ -43,5 +43,9 @@
   },
   "engines": {
     "node": ">=18.0"
-  }
+  },
+  "main": "index.js",
+  "repository": "git@github.com:VoidWorks-online/docusaurus.git",
+  "author": "ExMikuPro39 <72144156+ExMikuPro@users.noreply.github.com>",
+  "license": "MIT"
 }
