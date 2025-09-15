@@ -87,7 +87,7 @@ const config: Config = {
           label: '文档',
         },
         {
-          href: 'https://github.com/VoidWorks-online/doc',
+          href: 'https://github.com/VoidWorks-online/',
           label: 'GitHub',
           position: 'right',
         },
