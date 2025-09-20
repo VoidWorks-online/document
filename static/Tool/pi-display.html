@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>树莓派小屏幕预览</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .main {
+            flex: 1;
+            display: flex;
+        }
+        .sidebar {
+            width: 250px;
+            background: #f0f0f0;
+            border-right: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #ddd;
+            padding: 10px 14px;
+            font-size: 16px;
+            font-weight: bold;
+            border-bottom: 1px solid #bbb;
+        }
+        .back-button {
+            cursor: pointer;
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            text-decoration: none;
+        }
+        .title {
+            flex: 1;
+            text-align: right;
+            color: #333;
+        }
+        .accordion {
+            background-color: #eee;
+            color: #444;
+            cursor: pointer;
+            padding: 14px;
+            width: 100%;
+            text-align: left;
+            border: none;
+            outline: none;
+            transition: background-color 0.3s;
+            font-size: 16px;
+        }
+        .accordion.active { background-color: #ccc; }
+        .panel {
+            padding: 10px 14px;
+            display: block;
+            background-color: #fafafa;
+            overflow: hidden;
+            min-height: 50px;
+        }
+        .panel p { margin: 10px 0; }
+        .new-btn, .edit-btn, .delete-btn {
+            display: inline-block;
+            margin: 4px 4px 0 0;
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #fff;
+        }
+        .new-btn { background: #007bff; }
+        .new-btn:hover { background: #0056b3; }
+        .edit-btn { background: #28a745; }
+        .edit-btn:hover { background: #1e7e34; }
+        .delete-btn { background: #dc3545; }
+        .delete-btn:hover { background: #a71d2a; }
+        .align-group {
+            margin-top: 5px;
+        }
+        .align-group label {
+            margin-right: 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .oled-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #222;
+        }
+        canvas {
+            border: 3px solid #0f0;
+            background: black;
+        }
+        .footer {
+            padding: 10px;
+            border-top: 1px solid #ccc;
+            background: #f9f9f9;
+            text-align: right;
+        }
+        .export-btn {
+            padding: 6px 12px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .export-btn:hover {
+            background: #5a6268;
+        }
+        .menu-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            border: 2px solid #333;
+            padding: 20px;
+            z-index: 999;
+            display: none;
+            min-width: 250px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .menu-popup h3 { margin-top: 0; }
+        .menu-popup input,
+        .menu-popup button,
+        .menu-popup select,
+        .menu-popup textarea {
+            margin-top: 10px;
+            padding: 6px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #exportPopup textarea {
+            font-family: monospace;
+            resize: none;
+        }
+        @font-face {
+            font-family: "DottedSongtiSquare";
+            src: url("./assets/DottedSongtiSquareRegular.otf") format("opentype");
+        }
+    </style>
+</head>
+<body>
+<div class="main">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <a href="javascript:history.back()" class="back-button">&lt;</a>
+            <div class="title">树莓派小屏幕设置</div>
+        </div>
+
+        <button class="accordion active">行 1</button>
+        <div class="panel"></div>
+
+        <button class="accordion active">行 2</button>
+        <div class="panel"></div>
+
+        <button class="accordion active">行 3</button>
+        <div class="panel"></div>
+    </div>
+
+    <div class="oled-container">
+        <canvas id="oled" width="640" height="160"></canvas>
+    </div>
+</div>
+
+<div class="footer">
+    <button class="export-btn" onclick="exportConfig()">导出 JSON</button>
+</div>
+
+<div class="menu-popup" id="menuPopup">
+    <h3>选择内容类型</h3>
+    <select id="menuLevel1">
+        <option value="">-- 请选择 --</option>
+        <option value="text">文本</option>
+        <option value="system">系统信息</option>
+    </select>
+
+    <input id="customText" type="text" placeholder="请输入自定义文本" style="display:none;" />
+
+    <select id="menuLevel2" style="display:none;">
+        <option value="">-- 请选择系统信息 --</option>
+        <option value="cpu_freq">CPU 频率</option>
+        <option value="cpu_usage">CPU 占用</option>
+        <option value="mem_usage">内存占用</option>
+    </select>
+
+    <button id="menuOk">确定</button>
+    <button onclick="closeMenu()">取消</button>
+</div>
+
+<div class="menu-popup" id="editPopup">
+    <h3>编辑内容</h3>
+    <input id="editText" type="text" />
+    <button id="editOk">确定</button>
+    <button onclick="closeEdit()">取消</button>
+</div>
+
+<!-- 导出 JSON 弹窗 -->
+<div class="menu-popup" id="exportPopup">
+    <h3>导出配置 JSON</h3>
+    <textarea id="exportText" rows="10" readonly></textarea>
+    <button onclick="copyExport()">复制</button>
+    <button onclick="closeExport()">关闭</button>
+</div>
+
+<script>
+    const canvas = document.getElementById("oled");
+    const ctx = canvas.getContext("2d");
+
+    let lines = ["", "", ""];
+    let alignments = ["left", "left", "left"];
+    let types = ["text", "text", "text"];
+    let currentPanel = null;
+    let currentLineIndex = null;
+
+    function drawScreen() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "white";
+        const fontSize = 32;
+        ctx.font = fontSize + "px DottedSongtiSquare";
+        ctx.textBaseline = "top";
+
+        const lineHeight = canvas.height / 3;
+        for (let i = 0; i < 3; i++) {
+            ctx.textAlign = alignments[i];
+            let x = canvas.width / 2;
+            if (alignments[i] === "left") x = 0;
+            if (alignments[i] === "right") x = canvas.width;
+            const y = i * lineHeight + (lineHeight - fontSize) / 2;
+            ctx.fillText(lines[i], x, y);
+        }
+    }
+
+    document.fonts.ready.then(() => drawScreen());
+
+    function openMenu(panel, lineIndex) {
+        currentPanel = panel;
+        currentLineIndex = lineIndex;
+        document.getElementById("menuPopup").style.display = "block";
+        document.getElementById("menuLevel1").value = "";
+        document.getElementById("menuLevel2").style.display = "none";
+        document.getElementById("customText").style.display = "none";
+        document.getElementById("customText").value = "";
+    }
+    function closeMenu() {
+        document.getElementById("menuPopup").style.display = "none";
+    }
+    function openEdit(lineIndex, panel) {
+        currentLineIndex = lineIndex;
+        currentPanel = panel;
+        document.getElementById("editText").value = lines[lineIndex];
+        document.getElementById("editPopup").style.display = "block";
+    }
+    function closeEdit() {
+        document.getElementById("editPopup").style.display = "none";
+    }
+
+    document.getElementById("menuLevel1").addEventListener("change", function() {
+        if (this.value === "system") {
+            document.getElementById("menuLevel2").style.display = "block";
+            document.getElementById("customText").style.display = "none";
+        } else if (this.value === "text") {
+            document.getElementById("menuLevel2").style.display = "none";
+            document.getElementById("customText").style.display = "block";
+        } else {
+            document.getElementById("menuLevel2").style.display = "none";
+            document.getElementById("customText").style.display = "none";
+        }
+    });
+
+    document.getElementById("menuOk").addEventListener("click", function() {
+        const level1 = document.getElementById("menuLevel1").value;
+        const level2 = document.getElementById("menuLevel2").value;
+        const customText = document.getElementById("customText").value;
+
+        if (!level1) {
+            alert("请选择内容类型！");
+            return;
+        }
+
+        let content = "";
+        let type = "text";
+        if (level1 === "text") {
+            if (!customText.trim()) {
+                alert("请输入自定义文本！");
+                return;
+            }
+            content = customText.trim();
+            type = "text";
+        } else if (level1 === "system") {
+            if (!level2) {
+                alert("请选择系统信息项！");
+                return;
+            }
+            if (level2 === "cpu_freq") {
+                content = "CPU 频率: 1.5GHz";
+                type = "system:cpu_freq";
+            }
+            if (level2 === "cpu_usage") {
+                content = "CPU 占用: 23%";
+                type = "system:cpu_usage";
+            }
+            if (level2 === "mem_usage") {
+                content = "内存占用: 512MB";
+                type = "system:memory";
+            }
+        }
+
+        renderPanel(currentPanel, currentLineIndex, content, type);
+        closeMenu();
+    });
+
+    document.getElementById("editOk").addEventListener("click", function() {
+        const newText = document.getElementById("editText").value;
+        if (!newText.trim()) {
+            alert("请输入新内容！");
+            return;
+        }
+        lines[currentLineIndex] = newText.trim();
+        renderPanel(currentPanel, currentLineIndex, lines[currentLineIndex], types[currentLineIndex]);
+        drawScreen();
+        closeEdit();
+    });
+
+    function renderPanel(panel, lineIndex, content, type) {
+        panel.innerHTML = "";
+        const p = document.createElement("p");
+        p.textContent = content;
+        panel.appendChild(p);
+
+        const alignGroup = document.createElement("div");
+        alignGroup.className = "align-group";
+        ["left", "center", "right"].forEach(align => {
+            const label = document.createElement("label");
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "align" + lineIndex;
+            radio.value = align;
+            if (alignments[lineIndex] === align) radio.checked = true;
+            radio.addEventListener("change", () => {
+                alignments[lineIndex] = align;
+                drawScreen();
+            });
+            label.appendChild(radio);
+            label.appendChild(document.createTextNode(
+                align === "left" ? "靠左" : align === "center" ? "居中" : "靠右"
+            ));
+            alignGroup.appendChild(label);
+        });
+        panel.appendChild(alignGroup);
+
+        const editBtn = document.createElement("button");
+        editBtn.textContent = "编辑";
+        editBtn.className = "edit-btn";
+        editBtn.addEventListener("click", () => openEdit(lineIndex, panel));
+        panel.appendChild(editBtn);
+
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "删除";
+        delBtn.className = "delete-btn";
+        delBtn.addEventListener("click", () => {
+            lines[lineIndex] = "";
+            types[lineIndex] = "text";
+            alignments[lineIndex] = "left";
+            panel.innerHTML = "";
+            const btn = document.createElement("button");
+            btn.textContent = "新建";
+            btn.className = "new-btn";
+            btn.addEventListener("click", () => openMenu(panel, lineIndex));
+            panel.appendChild(btn);
+            drawScreen();
+        });
+        panel.appendChild(delBtn);
+
+        lines[lineIndex] = content;
+        types[lineIndex] = type;
+        drawScreen();
+    }
+
+    function exportConfig() {
+        const result = [];
+        for (let i = 0; i < 3; i++) {
+            if (types[i].startsWith("system")) {
+                result.push({
+                    type: types[i],
+                    style: alignments[i]
+                });
+            } else {
+                result.push({
+                    type: "text",
+                    content: lines[i],
+                    style: alignments[i]
+                });
+            }
+        }
+        const jsonStr = JSON.stringify(result, null, 2);
+        document.getElementById("exportText").value = jsonStr;
+        document.getElementById("exportPopup").style.display = "block";
+    }
+
+    function closeExport() {
+        document.getElementById("exportPopup").style.display = "none";
+    }
+
+    function copyExport() {
+        const textarea = document.getElementById("exportText");
+        textarea.select();
+        textarea.setSelectionRange(0, 99999);
+        document.execCommand("copy");
+        alert("已复制到剪贴板！");
+    }
+
+    window.onload = () => {
+        const panels = document.getElementsByClassName("panel");
+        for (let i = 0; i < panels.length; i++) {
+            if (panels[i].children.length === 0) {
+                const btn = document.createElement("button");
+                btn.textContent = "新建";
+                btn.className = "new-btn";
+                btn.addEventListener("click", () => openMenu(panels[i], i));
+                panels[i].appendChild(btn);
+            }
+        }
+    };
+</script>
+</body>
+</html>
